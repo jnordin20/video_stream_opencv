@@ -50,6 +50,7 @@
 #include <queue>
 #include <mutex>
 #include <video_stream_opencv/VideoStreamConfig.h>
+#include <iomanip>
 
 namespace fs = boost::filesystem;
 
@@ -136,7 +137,7 @@ virtual void do_capture() {
         {
             camera_fps_rate.sleep();
         }
-        NODELET_DEBUG_STREAM("Current frame_counter: " << frame_counter << " latest_config.stop_frame - latest_config.start_frame: " << latest_config.stop_frame - latest_config.start_frame);
+        NODELET_DEBUG_STREAM("Current frame: " << frame_counter << " stop_frame - start_frame: " << latest_config.stop_frame - latest_config.start_frame);
         if (video_stream_provider_type == "videofile" &&
             frame_counter >= latest_config.stop_frame - latest_config.start_frame)
         {
@@ -216,7 +217,9 @@ virtual void do_publish(const ros::TimerEvent& event) {
             cam_info_msg = get_default_camera_info_from_image(msg);
         }
         // The timestamps are in sync thanks to this publisher
-        pub.publish(*msg, cam_info_msg, ros::Time::now());
+        ros::Time now = ros::Time::now();
+        NODELET_INFO_STREAM("Publishing image : " << std::setprecision(8) << std::fixed << now.toSec() << " ");
+        pub.publish(*msg, cam_info_msg, now);
     }
 }
 
