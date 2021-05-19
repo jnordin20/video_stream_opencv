@@ -1,12 +1,12 @@
-#include <ros/ros.h>
-#include <ros/console.h>
 #include <nodelet/loader.h>
+#include <ros/console.h>
+#include <ros/ros.h>
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     ros::init(argc, argv, "video_stream");
 
-    if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) ) {
+    if (ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug)) {
         ros::console::notifyLoggerLevelsChanged();
     }
 
