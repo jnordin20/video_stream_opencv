@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   camera_info_manager
   sensor_msgs
+  opt_msgs
   nodelet
   dynamic_reconfigure)
 
