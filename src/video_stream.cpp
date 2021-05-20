@@ -44,23 +44,69 @@
 #include <iomanip>
 #include <mutex>
 #include <nodelet/nodelet.h>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
 #include <queue>
 #include <ros/ros.h>
 #include <sstream>
 #include <stdexcept>
 #include <video_stream_opencv/VideoStreamConfig.h>
 
+#include <opt_msgs/Feature2D.h>
+#include <opt_msgs/Feature2DArray.h>
+
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
 namespace fs = boost::filesystem;
 
 namespace video_stream_opencv {
+
+namespace {
+std::vector<cv::Point2f> detectAndExtractChessboardCorners(const cv::Mat& frame, int board_width, int board_height)
+{
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+
+    const cv::Size board_size(board_width, board_height);
+    std::vector<cv::Point2f> corners;
+    int flags = 0;
+    flags |= cv::CALIB_CB_ADAPTIVE_THRESH;
+    flags |= cv::CALIB_CB_FILTER_QUADS;
+    flags |= cv::CALIB_CB_FAST_CHECK;
+    if (not cv::findChessboardCorners(gray, board_size, corners, flags)) {
+        return {};
+    }
+    cv::TermCriteria criteria(cv::TermCriteria::EPS | cv::TermCriteria::COUNT, 30, 0.1);
+    cv::cornerSubPix(gray, corners, cv::Size(2, 2), cv::Size(-1, -1), criteria);
+
+    return corners;
+}
+
+opt_msgs::Feature2DArray::_corners_type fillMsgWithExtractedCorners(const std::vector<cv::Point2f>& corners)
+{
+    if (corners.empty()) {
+        return {};
+    }
+    // if (corners.size() == opt_corners.size()) {}
+    opt_msgs::Feature2DArray::_corners_type opt_corners(corners.size());
+    for (size_t i = 0; i < corners.size(); ++i) {
+        opt_msgs::Feature2D c;
+        c.x = corners[i].x;
+        c.y = corners[i].y;
+        opt_corners[i] = c;
+    }
+    return opt_corners;
+}
+} // namespace
 
 class VideoStreamNodelet : public nodelet::Nodelet
 {
 protected:
     boost::shared_ptr<ros::NodeHandle> nh, pnh;
     image_transport::CameraPublisher pub;
+    ros::Publisher corners_pub_;
+    opt_msgs::Feature2DArray corners_msg_;
     boost::shared_ptr<dynamic_reconfigure::Server<VideoStreamConfig>> dyn_srv;
     VideoStreamConfig config;
     std::mutex q_mutex, s_mutex, c_mutex, p_mutex;
@@ -195,6 +241,17 @@ protected:
                 cv::flip(frame, frame, 1);
             else if (latest_config.flip_vertical)
                 cv::flip(frame, frame, 0);
+
+            int board_width{ 8 };
+            int board_height{ 7 };
+            const std::vector<cv::Point2f> corners =
+                detectAndExtractChessboardCorners(frame, board_width, board_height);
+            if (not corners.empty()) {
+                NODELET_INFO_STREAM("Checkerboard detected. Found " << corners.size() << " corners");
+            } else {
+                NODELET_INFO_STREAM("Checkerboard not detected");
+            }
+
             cv_bridge::CvImagePtr cv_image = boost::make_shared<cv_bridge::CvImage>(header, "bgr8", frame);
             if (latest_config.output_encoding != "bgr8") {
                 try {
@@ -215,6 +272,12 @@ protected:
             ros::Time now = ros::Time::now();
             NODELET_INFO_STREAM("Publishing image : " << std::setprecision(8) << std::fixed << now.toSec() << " ");
             pub.publish(*msg, cam_info_msg, now);
+
+            // publish extracted corners
+            corners_msg_.header.seq++;
+            corners_msg_.header.stamp = now;
+            corners_msg_.corners = fillMsgWithExtractedCorners(corners);
+            corners_pub_.publish(corners_msg_);
         }
     }
 
@@ -460,6 +523,12 @@ protected:
             boost::bind(&VideoStreamNodelet::infoDisconnectionCallback, this, _1);
         pub = image_transport::ImageTransport(*nh).advertiseCamera(
             "image_raw", 1, connect_cb, disconnect_cb, info_connect_cb, info_disconnect_cb, ros::VoidPtr(), false);
+
+        corners_pub_ = nh->advertise<opt_msgs::Feature2DArray>("corners", 1);
+        // corners_msg_.corners.resize(56);
+        corners_msg_.header.stamp = ros::Time::now();
+        corners_msg_.header.seq = 0;
+        corners_pub_.publish(corners_msg_);
     }
 
     virtual ~VideoStreamNodelet()
