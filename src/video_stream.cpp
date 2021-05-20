@@ -242,12 +242,10 @@ protected:
             else if (latest_config.flip_vertical)
                 cv::flip(frame, frame, 0);
 
-            int board_width{ 8 };
-            int board_height{ 7 };
             const std::vector<cv::Point2f> corners =
-                detectAndExtractChessboardCorners(frame, board_width, board_height);
+                detectAndExtractChessboardCorners(frame, latest_config.board_width, latest_config.board_height);
             if (not corners.empty()) {
-                NODELET_INFO_STREAM("Checkerboard detected. Found " << corners.size() << " corners");
+                NODELET_INFO_STREAM("Checkerboard " << latest_config.board_width << "x" << latest_config.board_height << " detected. Found " << corners.size() << " corners");
             } else {
                 NODELET_INFO_STREAM("Checkerboard not detected");
             }
@@ -444,16 +442,18 @@ protected:
         }
 
         // show current configuration
-        NODELET_INFO_STREAM("Camera name: " << new_config.camera_name);
-        NODELET_INFO_STREAM("Provided camera_info_url: '" << new_config.camera_info_url << "'");
-        NODELET_INFO_STREAM("Publishing with frame_id: " << new_config.frame_id);
-        NODELET_INFO_STREAM("Setting camera FPS to: " << new_config.set_camera_fps);
-        NODELET_INFO_STREAM("Throttling to fps: " << new_config.fps);
-        NODELET_INFO_STREAM("Setting buffer size for capturing frames to: " << new_config.buffer_queue_size);
-        NODELET_INFO_STREAM("Flip horizontal image is: " << ((new_config.flip_horizontal) ? "true" : "false"));
-        NODELET_INFO_STREAM("Flip vertical image is: " << ((new_config.flip_vertical) ? "true" : "false"));
-        NODELET_INFO_STREAM("Video start frame is: " << new_config.start_frame);
-        NODELET_INFO_STREAM("Video stop frame is: " << new_config.stop_frame);
+        NODELET_INFO_STREAM("Camera name                : " << new_config.camera_name);
+        NODELET_INFO_STREAM("Provided camera_info_url   : '" << new_config.camera_info_url << "'");
+        NODELET_INFO_STREAM("Publishing with frame_id   : " << new_config.frame_id);
+        NODELET_INFO_STREAM("Setting camera FPS to      : " << new_config.set_camera_fps);
+        NODELET_INFO_STREAM("Throttling to fps          : " << new_config.fps);
+        NODELET_INFO_STREAM("Buffer size for capture    : " << new_config.buffer_queue_size);
+        NODELET_INFO_STREAM("Flip horizontal image      : " << ((new_config.flip_horizontal) ? "true" : "false"));
+        NODELET_INFO_STREAM("Flip vertical image        : " << ((new_config.flip_vertical) ? "true" : "false"));
+        NODELET_INFO_STREAM("Video start frame          : " << new_config.start_frame);
+        NODELET_INFO_STREAM("Video stop frame           : " << new_config.stop_frame);
+        NODELET_INFO_STREAM("Chessboard width           : " << new_config.board_width);
+        NODELET_INFO_STREAM("Chessboard height          : " << new_config.board_height);
 
         if (new_config.width != 0 && new_config.height != 0) {
             NODELET_INFO_STREAM("Forced image width is: " << new_config.width);
