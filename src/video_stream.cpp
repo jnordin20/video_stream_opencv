@@ -120,6 +120,7 @@ protected:
     boost::thread capture_thread;
     ros::Timer publish_timer;
     sensor_msgs::CameraInfo cam_info_msg;
+    int published_frame_counter;
 
     // Based on the ros tutorial on transforming opencv images to Image messages
 
@@ -162,29 +163,8 @@ protected:
                 std::lock_guard<std::mutex> lock(c_mutex);
                 latest_config = config;
             }
-            if (!cap->isOpened()) {
-                NODELET_WARN("Waiting for device...");
-                cv::waitKey(100);
-                continue;
-            }
-            if (!cap->read(frame)) {
-                NODELET_ERROR_STREAM_THROTTLE(1.0,
-                                              "Could not capture frame (frame_counter: " << frame_counter << ")");
-                if (latest_config.reopen_on_read_failure) {
-                    NODELET_WARN_STREAM_THROTTLE(1.0, "trying to reopen the device");
-                    unsubscribe();
-                    subscribe();
-                }
-            }
-
-            frame_counter++;
-            if (video_stream_provider_type == "videofile") {
-                camera_fps_rate.sleep();
-            }
-            NODELET_DEBUG_STREAM("Current frame: " << frame_counter << " stop_frame - start_frame: "
-                                                   << latest_config.stop_frame - latest_config.start_frame);
-            if (video_stream_provider_type == "videofile" &&
-                frame_counter >= latest_config.stop_frame - latest_config.start_frame) {
+            
+            if (video_stream_provider_type == "videofile" && frame_counter >= latest_config.stop_frame - latest_config.start_frame) {
                 if (latest_config.loop_videofile) {
                     cap->open(video_stream_provider);
                     cap->set(cv::CAP_PROP_POS_FRAMES, latest_config.start_frame);
@@ -195,6 +175,24 @@ protected:
                     break;
                 }
             }
+            NODELET_DEBUG_STREAM("Current frame: " << frame_counter << " stop_frame - start_frame: " << latest_config.stop_frame - latest_config.start_frame);
+            if (!cap->isOpened()) {
+                NODELET_WARN("Waiting for device...");
+                cv::waitKey(100);
+                continue;
+            }
+            if (!cap->read(frame)) {
+                NODELET_ERROR_STREAM_THROTTLE(1.0, "Could not capture frame (frame_counter: " << frame_counter << ")");
+                if (latest_config.reopen_on_read_failure) {
+                    NODELET_WARN_STREAM_THROTTLE(1.0, "trying to reopen the device");
+                    unsubscribe();
+                    subscribe();
+                }
+            }
+
+            if (video_stream_provider_type == "videofile") {
+                camera_fps_rate.sleep();
+            }
 
             if (!frame.empty()) {
                 std::lock_guard<std::mutex> g(q_mutex);
@@ -204,6 +202,7 @@ protected:
                 }
                 framesQueue.push(frame.clone());
             }
+            frame_counter++;
         }
         NODELET_DEBUG("Capture thread finished");
     }
@@ -242,13 +241,13 @@ protected:
             else if (latest_config.flip_vertical)
                 cv::flip(frame, frame, 0);
 
-            const std::vector<cv::Point2f> corners =
-                detectAndExtractChessboardCorners(frame, latest_config.board_width, latest_config.board_height);
-            if (not corners.empty()) {
-                NODELET_INFO_STREAM("Checkerboard " << latest_config.board_width << "x" << latest_config.board_height << " detected. Found " << corners.size() << " corners");
-            } else {
-                NODELET_INFO_STREAM("Checkerboard not detected");
-            }
+            // const std::vector<cv::Point2f> corners =
+            //     detectAndExtractChessboardCorners(frame, latest_config.board_width, latest_config.board_height);
+            // if (not corners.empty()) {
+            //     NODELET_INFO_STREAM("Checkerboard " << latest_config.board_width << "x" << latest_config.board_height << " detected. Found " << corners.size() << " corners");
+            // } else {
+            //     NODELET_INFO_STREAM("Checkerboard not detected");
+            // }
 
             cv_bridge::CvImagePtr cv_image = boost::make_shared<cv_bridge::CvImage>(header, "bgr8", frame);
             if (latest_config.output_encoding != "bgr8") {
@@ -268,14 +267,14 @@ protected:
             }
             // The timestamps are in sync thanks to this publisher
             ros::Time now = ros::Time::now();
-            NODELET_INFO_STREAM("Publishing image : " << std::setprecision(8) << std::fixed << now.toSec() << " ");
+            NODELET_INFO_STREAM("Publishing image : " << published_frame_counter << " " << std::setprecision(8) << std::fixed << now.toSec() << " ");
             pub.publish(*msg, cam_info_msg, now);
-
-            // publish extracted corners
-            corners_msg_.header.seq++;
-            corners_msg_.header.stamp = now;
-            corners_msg_.corners = fillMsgWithExtractedCorners(corners);
-            corners_pub_.publish(corners_msg_);
+            published_frame_counter++;
+            // // publish extracted corners
+            // corners_msg_.header.seq++;
+            // corners_msg_.header.stamp = now;
+            // corners_msg_.corners = fillMsgWithExtractedCorners(corners);
+            // corners_pub_.publish(corners_msg_);
         }
     }
 
@@ -369,8 +368,7 @@ protected:
 
         try {
             capture_thread = boost::thread(boost::bind(&VideoStreamNodelet::do_capture, this));
-            publish_timer =
-                nh->createTimer(ros::Duration(1.0 / latest_config.fps), &VideoStreamNodelet::do_publish, this);
+            publish_timer = nh->createTimer(ros::Duration(1.0 / latest_config.fps), &VideoStreamNodelet::do_publish, this);
         } catch (std::exception& e) {
             NODELET_ERROR_STREAM("Failed to start capture thread: " << e.what());
         }
@@ -529,6 +527,8 @@ protected:
         corners_msg_.header.stamp = ros::Time::now();
         corners_msg_.header.seq = 0;
         corners_pub_.publish(corners_msg_);
+
+        published_frame_counter = 0;
     }
 
     virtual ~VideoStreamNodelet()
